@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../App';
 import { api } from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Play, Square, RotateCcw, Link2, LogOut, ChevronRight, Unlink, AlertTriangle, WifiOff } from 'lucide-react';
