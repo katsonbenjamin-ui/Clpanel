@@ -54,9 +54,11 @@ const S = {
     color: '#f5f3ff',
     fontSize: 14,
     outline: 'none',
-    marginBottom: 16,
+    marginBottom: 20,
     transition: 'border-color 0.2s',
     boxSizing: 'border-box',
+    fontFamily: 'monospace',
+    letterSpacing: '0.02em',
   },
   btn: {
     width: '100%',
@@ -70,7 +72,6 @@ const S = {
     color: '#fff',
     letterSpacing: '0.02em',
     transition: 'opacity 0.2s, transform 0.1s',
-    marginTop: 4,
   },
   error: {
     background: 'rgba(239,68,68,0.1)',
@@ -80,33 +81,46 @@ const S = {
     color: '#fca5a5',
     fontSize: 13,
     marginBottom: 16,
+    lineHeight: 1.5,
   },
-  hint: {
+  infoBox: {
     marginTop: 20,
+    padding: '12px 16px',
+    background: 'rgba(124,58,237,0.07)',
+    border: '1px solid rgba(124,58,237,0.15)',
+    borderRadius: 10,
     fontSize: 12,
-    color: '#4a3d6b',
+    color: '#6d5a9c',
+    lineHeight: 1.65,
     textAlign: 'center',
-    lineHeight: 1.6,
   },
 };
 
 export default function Login() {
   const { login } = useAuth();
-  const [form, setForm]     = useState({ username: '', password: '' });
+  const [inviteToken, setInviteToken] = useState('');
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
   async function submit(e) {
     e.preventDefault();
+    const tok = inviteToken.trim();
+    if (!tok) { setError('Please enter your invite token.'); return; }
+
+    // Basic UUID format check
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(tok)) {
+      setError('Invalid token format. It should look like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
+      return;
+    }
+
     setError('');
     setLoading(true);
     try {
-      const { token, user } = await api.login(form.username, form.password);
+      const { token, user } = await api.tokenLogin(tok);
       login(token, user);
     } catch (err) {
-      setError(err.message || 'Login failed. Check your credentials.');
+      setError(err.message || 'Invalid or expired invite token. Contact your admin.');
     } finally {
       setLoading(false);
     }
@@ -128,46 +142,33 @@ export default function Login() {
         {error && <div style={S.error}>{error}</div>}
 
         <form onSubmit={submit} autoComplete="off">
-          <div>
-            <label style={S.label}>Username</label>
-            <input
-              style={S.input}
-              type="text"
-              value={form.username}
-              onChange={set('username')}
-              placeholder="your_username"
-              required
-              autoFocus
-              onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.6)'}
-              onBlur={e  => e.target.style.borderColor = 'rgba(124,58,237,0.2)'}
-            />
-          </div>
-          <div>
-            <label style={S.label}>Password</label>
-            <input
-              style={S.input}
-              type="password"
-              value={form.password}
-              onChange={set('password')}
-              placeholder="••••••••"
-              required
-              onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.6)'}
-              onBlur={e  => e.target.style.borderColor = 'rgba(124,58,237,0.2)'}
-            />
-          </div>
+          <label style={S.label}>Invite Token</label>
+          <input
+            style={S.input}
+            type="text"
+            value={inviteToken}
+            onChange={e => setInviteToken(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            required
+            autoFocus
+            spellCheck={false}
+            onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.6)'}
+            onBlur={e  => e.target.style.borderColor = 'rgba(124,58,237,0.2)'}
+          />
           <button
             style={{ ...S.btn, opacity: loading ? 0.6 : 1 }}
             type="submit"
             disabled={loading}
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Verifying...' : 'Access Panel'}
           </button>
         </form>
 
-        <p style={S.hint}>
-          Use the credentials provided by your admin.<br/>
-          Default password is <strong style={{color:'#7c3aed'}}>user</strong>.
-        </p>
+        <div style={S.infoBox}>
+          Your invite token was sent to you by your admin.<br/>
+          It looks like: <strong style={{color:'#a78bfa',fontFamily:'monospace'}}>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</strong><br/><br/>
+          If you received a link, just open it directly — you'll be logged in automatically.
+        </div>
       </div>
     </div>
   );

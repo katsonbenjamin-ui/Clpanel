@@ -4,22 +4,26 @@ import { api } from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Play, Square, RotateCcw, Link2, LogOut, ChevronRight, Unlink, AlertTriangle, WifiOff } from 'lucide-react';
 
+// BOTIFY-X session ID format: BOTIFY-X=<20 hex chars>-<16 hex chars>
+const SESSION_RE = /^BOTIFY-X=[0-9a-f]{20}-[0-9a-f]{16}$/i;
+
 const STATUS_META = {
-  running:     { label: 'ONLINE',       color: '#4ade80', pulse: true  },
-  starting:    { label: 'STARTING',     color: '#a855f7', pulse: true  },
-  restarting:  { label: 'RESTARTING',   color: '#a855f7', pulse: true  },
-  connecting:  { label: 'CONNECTING',   color: '#fbbf24', pulse: true  },
-  stopped:     { label: 'OFFLINE',      color: '#f87171', pulse: false },
-  expired:     { label: 'EXPIRED',      color: '#f87171', pulse: false },
-  disconnected:{ label: 'DISCONNECTED', color: '#fbbf24', pulse: false },
+  running:      { label: 'ONLINE',       color: '#4ade80', pulse: true  },
+  starting:     { label: 'STARTING',     color: '#a855f7', pulse: true  },
+  restarting:   { label: 'RESTARTING',   color: '#a855f7', pulse: true  },
+  connecting:   { label: 'CONNECTING',   color: '#fbbf24', pulse: true  },
+  stopped:      { label: 'OFFLINE',      color: '#f87171', pulse: false },
+  expired:      { label: 'EXPIRED',      color: '#f87171', pulse: false },
+  disconnected: { label: 'DISCONNECTED', color: '#fbbf24', pulse: false },
 };
 
 export default function Dashboard() {
   const { user, setUser, logout } = useAuth();
-  const [status, setStatus]   = useState('stopped');
-  const [logs, setLogs]       = useState([]);
-  const [events, setEvents]   = useState([]);
+  const [status, setStatus]         = useState('stopped');
+  const [logs, setLogs]             = useState([]);
+  const [events, setEvents]         = useState([]);
   const [sessionInput, setSessionInput] = useState('');
+  const [sessionError, setSessionError] = useState('');
   const [showAttach, setShowAttach]     = useState(false);
   const [msg, setMsg]         = useState({ text:'', ok:true });
   const [loading, setLoading] = useState({});
@@ -72,20 +76,51 @@ export default function Dashboard() {
     finally { setL(key, false); }
   };
 
+  // Validate session ID format before touching the API
+  const validateSessionInput = (val) => {
+    const v = val.trim();
+    if (!v) { setSessionError(''); return; }
+    if (!v.startsWith('BOTIFY-X=')) {
+      setSessionError('Must start with BOTIFY-X=  —  copy it from the Pairing Portal.');
+      return;
+    }
+    if (!SESSION_RE.test(v)) {
+      setSessionError('Invalid format. Full ID looks like: BOTIFY-X=xxxx…-xxxx…');
+      return;
+    }
+    setSessionError('');
+  };
+
+  const handleSessionInputChange = (e) => {
+    setSessionInput(e.target.value);
+    validateSessionInput(e.target.value);
+  };
+
   const attachSession = async () => {
-    if (!sessionInput.trim()) return;
+    const val = sessionInput.trim();
+    if (!val) return;
+
+    // Hard-block if format is wrong — never send to server
+    if (!SESSION_RE.test(val)) {
+      setSessionError('Invalid session ID. It must come from the Pairing Portal and start with BOTIFY-X=');
+      return;
+    }
+
     setL('attach', true);
     try {
-      await api.attachSession(sessionInput.trim());
+      await api.attachSession(val);
       try {
         const v = await api.validate();
         if (!v.valid && v.reason !== 'expired') {
-          showMsg('Session ID not found in Core. Complete pairing in the portal first.', false);
+          showMsg('Session ID not found in Core. Complete pairing in the Pairing Portal first.', false);
           setL('attach', false); return;
         }
       } catch {}
-      const me = await api.me(); setUser(me.user);
-      setShowAttach(false); setSessionInput('');
+      const me = await api.me();
+      setUser(me.user);
+      setShowAttach(false);
+      setSessionInput('');
+      setSessionError('');
       showMsg('Session attached. You can now start your bot.', true);
       fetchStatus(); fetchEvents();
     } catch(e) { showMsg(e.message || 'Failed to attach.', false); }
@@ -99,14 +134,50 @@ export default function Dashboard() {
     setStatus('stopped');
   };
 
-  const sm      = STATUS_META[status] || STATUS_META.stopped;
-  const expiry  = user?.expiry_date ? new Date(user.expiry_date).toLocaleDateString() : 'No expiry';
+  const openAttach = () => {
+    setShowAttach(true);
+    setSessionInput('');
+    setSessionError('');
+  };
+
+  const sm     = STATUS_META[status] || STATUS_META.stopped;
+  const expiry = user?.expiry_date ? new Date(user.expiry_date).toLocaleDateString() : 'No expiry';
 
   return (
     <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',background:'radial-gradient(ellipse at top,#1a0533 0%,#050507 60%)'}}>
       <style>{`
         @keyframes bxpulse{0%,100%{opacity:1}50%{opacity:.35}}
         @keyframes bxspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .terminal{
+          background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.06);
+          border-radius:0.5rem;padding:0.75rem;min-height:100px;max-height:220px;
+          overflow-y:auto;font-family:monospace;font-size:0.73rem;line-height:1.6;
+        }
+        .glass{
+          background:rgba(255,255,255,0.028);border:1px solid rgba(255,255,255,0.065);
+          border-radius:1rem;backdrop-filter:blur(8px);
+        }
+        .btn{
+          display:inline-flex;align-items:center;justify-content:center;gap:0.4rem;
+          padding:0.5rem 0.875rem;border-radius:0.6rem;border:1px solid transparent;
+          font-weight:600;font-size:0.8rem;cursor:pointer;transition:all 0.15s;white-space:nowrap;
+        }
+        .btn:disabled{opacity:0.35;cursor:not-allowed;}
+        .btn-primary{background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.35);color:#a855f7;}
+        .btn-primary:not(:disabled):hover{background:rgba(168,85,247,0.25);}
+        .btn-green{background:rgba(74,222,128,0.08);border-color:rgba(74,222,128,0.2);color:#4ade80;}
+        .btn-green:not(:disabled):hover{background:rgba(74,222,128,0.15);}
+        .btn-amber{background:rgba(251,191,36,0.08);border-color:rgba(251,191,36,0.2);color:#fbbf24;}
+        .btn-amber:not(:disabled):hover{background:rgba(251,191,36,0.15);}
+        .btn-red{background:rgba(248,113,113,0.08);border-color:rgba(248,113,113,0.2);color:#f87171;}
+        .btn-red:not(:disabled):hover{background:rgba(248,113,113,0.15);}
+        .input{
+          width:100%;padding:0.6rem 0.875rem;background:rgba(0,0,0,0.4);
+          border:1px solid rgba(255,255,255,0.08);border-radius:0.6rem;color:#fff;
+          font-size:0.85rem;outline:none;transition:border-color 0.15s;box-sizing:border-box;
+        }
+        .input:focus{border-color:rgba(168,85,247,0.4);}
+        .input::placeholder{color:#334155;}
       `}</style>
 
       {/* Header */}
@@ -144,7 +215,7 @@ export default function Dashboard() {
             <div>
               <p style={{color:'#f87171',fontWeight:700,fontSize:'0.85rem',marginBottom:'0.2rem'}}>Account Expired</p>
               <p style={{color:'#64748b',fontSize:'0.78rem',lineHeight:1.5}}>
-                {user?.expiry_date ? 'Expired ' + new Date(user.expiry_date).toLocaleDateString() + '. ' : ''}
+                {user?.expiry_date?'Expired '+new Date(user.expiry_date).toLocaleDateString()+'. ':''}
                 Contact your admin to renew your subscription.
               </p>
             </div>
@@ -167,9 +238,10 @@ export default function Dashboard() {
             <div style={{textAlign:'center',padding:'0.75rem 0'}}>
               <WifiOff size={24} color="#1e293b" style={{margin:'0 auto 0.75rem'}}/>
               <p style={{color:'#475569',fontSize:'0.82rem',marginBottom:'0.875rem',lineHeight:1.5}}>
-                No session attached.<br/>Paste your <strong style={{color:'#a855f7'}}>BOTIFY-X=...</strong> ID from the pairing portal.
+                No session attached.<br/>
+                Paste your <strong style={{color:'#a855f7'}}>BOTIFY-X=…</strong> ID from the Pairing Portal.
               </p>
-              <button onClick={()=>setShowAttach(true)} className="btn btn-primary" style={{fontSize:'0.82rem'}}>
+              <button onClick={openAttach} className="btn btn-primary" style={{fontSize:'0.82rem'}}>
                 <Link2 size={13}/> Attach Session ID
               </button>
             </div>
@@ -184,7 +256,6 @@ export default function Dashboard() {
                   <Unlink size={12}/>
                 </button>
               </div>
-
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
                 <button onClick={()=>action('start',api.start,'Start')}
                   disabled={!canControl||loading.start||['running','starting','connecting'].includes(status)}
@@ -215,25 +286,53 @@ export default function Dashboard() {
           )}
         </motion.div>
 
-        {/* Attach panel */}
+        {/* Attach session panel */}
         <AnimatePresence>
           {showAttach && (
             <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}} exit={{opacity:0}}
               className="glass" style={{padding:'1rem',borderColor:'rgba(168,85,247,0.25)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
                 <span style={{fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',color:'#a855f7',textTransform:'uppercase'}}>Attach Session ID</span>
-                <button onClick={()=>{setShowAttach(false);setSessionInput('');}} style={{background:'none',border:'none',color:'#475569',cursor:'pointer',fontSize:'1.25rem',lineHeight:1}}>×</button>
+                <button onClick={()=>{setShowAttach(false);setSessionInput('');setSessionError('');}}
+                  style={{background:'none',border:'none',color:'#475569',cursor:'pointer',fontSize:'1.25rem',lineHeight:1}}>×</button>
               </div>
+
               <p style={{fontSize:'0.78rem',color:'#475569',marginBottom:'0.75rem',lineHeight:1.55}}>
-                Go to the <strong style={{color:'#fff'}}>Pairing Portal</strong>, link your WhatsApp,
-                and copy the <strong style={{color:'#a855f7'}}>BOTIFY-X=...</strong> code sent to your phone.
+                Go to the <strong style={{color:'#fff'}}>Pairing Portal</strong>, link your WhatsApp number,
+                then copy the <strong style={{color:'#a855f7'}}>BOTIFY-X=…</strong> ID shown on screen.
               </p>
-              <input className="input" placeholder="BOTIFY-X=abc123..."
-                style={{fontFamily:'monospace',fontSize:'0.78rem',marginBottom:'0.625rem'}}
-                value={sessionInput} onChange={e=>setSessionInput(e.target.value)}/>
-              <button onClick={attachSession} disabled={loading.attach||!sessionInput.trim()}
-                className="btn btn-primary" style={{width:'100%'}}>
-                {loading.attach ? 'Validating...' : <><ChevronRight size={13}/> Attach</>}
+
+              <input
+                className="input"
+                placeholder="BOTIFY-X=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                style={{fontFamily:'monospace',fontSize:'0.78rem',marginBottom:'0.3rem',
+                  borderColor: sessionError ? 'rgba(248,113,113,0.5)' : undefined}}
+                value={sessionInput}
+                onChange={handleSessionInputChange}
+                spellCheck={false}
+              />
+
+              {/* Live format error */}
+              {sessionError && (
+                <p style={{fontSize:'0.72rem',color:'#f87171',marginBottom:'0.5rem',lineHeight:1.45}}>
+                  ⚠ {sessionError}
+                </p>
+              )}
+
+              {/* Format hint when empty */}
+              {!sessionInput && !sessionError && (
+                <p style={{fontSize:'0.7rem',color:'#334155',marginBottom:'0.5rem',lineHeight:1.45}}>
+                  Must start with <code style={{color:'#a855f7',background:'rgba(168,85,247,0.08)',padding:'0 4px',borderRadius:4}}>BOTIFY-X=</code> and come from the Pairing Portal only.
+                </p>
+              )}
+
+              <button
+                onClick={attachSession}
+                disabled={loading.attach || !sessionInput.trim() || !!sessionError}
+                className="btn btn-primary"
+                style={{width:'100%',marginTop:'0.375rem'}}
+              >
+                {loading.attach ? 'Validating…' : <><ChevronRight size={13}/> Attach</>}
               </button>
             </motion.div>
           )}
@@ -247,7 +346,7 @@ export default function Dashboard() {
           </p>
           <div className="terminal" ref={termRef}>
             {events.length===0&&logs.length===0
-              ? <span style={{color:'#1e293b'}}>No activity yet...</span>
+              ? <span style={{color:'#1e293b'}}>No activity yet…</span>
               : <>
                   {[...events].reverse().map((e,i) => (
                     <div key={i} style={{marginBottom:'0.15rem'}}>
