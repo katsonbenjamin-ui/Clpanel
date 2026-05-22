@@ -13,7 +13,7 @@ const S = {
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 400,
     background: 'rgba(15,10,30,0.85)',
     border: '1px solid rgba(124,58,237,0.25)',
     borderRadius: 20,
@@ -22,10 +22,7 @@ const S = {
     boxShadow: '0 24px 80px rgba(91,33,182,0.25)',
     animation: 'fadeIn 0.4s ease',
   },
-  logo: {
-    textAlign: 'center',
-    marginBottom: 32,
-  },
+  logo: { textAlign: 'center', marginBottom: 32 },
   logoIcon: {
     width: 52,
     height: 52,
@@ -37,37 +34,8 @@ const S = {
     marginBottom: 14,
     animation: 'glow 3s ease infinite',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 700,
-    color: '#f5f3ff',
-    letterSpacing: '-0.3px',
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#7c6fa0',
-    marginTop: 4,
-  },
-  tabs: {
-    display: 'flex',
-    background: 'rgba(255,255,255,0.04)',
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 28,
-    gap: 4,
-  },
-  tab: (active) => ({
-    flex: 1,
-    padding: '8px 0',
-    borderRadius: 8,
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-    transition: 'all 0.2s',
-    background: active ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'transparent',
-    color: active ? '#fff' : '#7c6fa0',
-  }),
+  title:    { fontSize: 22, fontWeight: 700, color: '#f5f3ff', letterSpacing: '-0.3px' },
+  subtitle: { fontSize: 13, color: '#7c6fa0', marginTop: 4 },
   label: {
     display: 'block',
     fontSize: 12,
@@ -88,6 +56,7 @@ const S = {
     outline: 'none',
     marginBottom: 16,
     transition: 'border-color 0.2s',
+    boxSizing: 'border-box',
   },
   btn: {
     width: '100%',
@@ -112,14 +81,19 @@ const S = {
     fontSize: 13,
     marginBottom: 16,
   },
-  fieldWrap: { marginBottom: 4 },
+  hint: {
+    marginTop: 20,
+    fontSize: 12,
+    color: '#4a3d6b',
+    textAlign: 'center',
+    lineHeight: 1.6,
+  },
 };
 
 export default function Login() {
   const { login } = useAuth();
-  const [tab, setTab] = useState('login');
-  const [form, setForm] = useState({ username: '', password: '', inviteToken: '' });
-  const [error, setError] = useState('');
+  const [form, setForm]     = useState({ username: '', password: '' });
+  const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -129,15 +103,10 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      if (tab === 'login') {
-        const { token, user } = await api.login(form.username, form.password);
-        login(token, user);
-      } else {
-        const { token, user } = await api.register(form.username, form.password, form.inviteToken);
-        login(token, user);
-      }
+      const { token, user } = await api.login(form.username, form.password);
+      login(token, user);
     } catch (err) {
-      setError(err.message || 'Something went wrong');
+      setError(err.message || 'Login failed. Check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -156,15 +125,10 @@ export default function Login() {
           <div style={S.subtitle}>Client Panel</div>
         </div>
 
-        <div style={S.tabs}>
-          <button style={S.tab(tab === 'login')} onClick={() => setTab('login')}>Sign In</button>
-          <button style={S.tab(tab === 'register')} onClick={() => setTab('register')}>Register</button>
-        </div>
-
         {error && <div style={S.error}>{error}</div>}
 
         <form onSubmit={submit} autoComplete="off">
-          <div style={S.fieldWrap}>
+          <div>
             <label style={S.label}>Username</label>
             <input
               style={S.input}
@@ -174,9 +138,11 @@ export default function Login() {
               placeholder="your_username"
               required
               autoFocus
+              onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.6)'}
+              onBlur={e  => e.target.style.borderColor = 'rgba(124,58,237,0.2)'}
             />
           </div>
-          <div style={S.fieldWrap}>
+          <div>
             <label style={S.label}>Password</label>
             <input
               style={S.input}
@@ -185,29 +151,23 @@ export default function Login() {
               onChange={set('password')}
               placeholder="••••••••"
               required
+              onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.6)'}
+              onBlur={e  => e.target.style.borderColor = 'rgba(124,58,237,0.2)'}
             />
           </div>
-          {tab === 'register' && (
-            <div style={S.fieldWrap}>
-              <label style={S.label}>Invite Token</label>
-              <input
-                style={S.input}
-                type="text"
-                value={form.inviteToken}
-                onChange={set('inviteToken')}
-                placeholder="BX-INVITE-..."
-                required
-              />
-            </div>
-          )}
           <button
             style={{ ...S.btn, opacity: loading ? 0.6 : 1 }}
             type="submit"
             disabled={loading}
           >
-            {loading ? 'Please wait...' : tab === 'login' ? 'Sign In' : 'Create Account'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <p style={S.hint}>
+          Use the credentials provided by your admin.<br/>
+          Default password is <strong style={{color:'#7c3aed'}}>user</strong>.
+        </p>
       </div>
     </div>
   );
