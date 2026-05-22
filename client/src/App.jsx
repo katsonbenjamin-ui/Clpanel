@@ -7,7 +7,7 @@ const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser]   = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('bx_token'));
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +33,24 @@ export default function App() {
   }, [logout]);
 
   useEffect(() => {
+    // Check for panel token in URL query string (?token=...)
+    const params = new URLSearchParams(window.location.search);
+    const panelToken = params.get('token');
+
+    if (panelToken) {
+      // Auto-login via panel link — remove token from URL immediately
+      window.history.replaceState({}, document.title, window.location.pathname);
+      api.tokenLogin(panelToken)
+        .then(({ token: tok, user: u }) => { login(tok, u); })
+        .catch(() => {
+          // Token invalid — fall back to normal login screen
+          localStorage.removeItem('bx_token');
+          setToken(null);
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+
     if (token) {
       api.me()
         .then(({ user: u }) => setUser(u))
@@ -52,7 +70,7 @@ export default function App() {
   }
 
   return (
-    <AuthCtx.Provider value={{ user, token, login, logout, refreshUser }}>
+    <AuthCtx.Provider value={{ user, token, login, logout, setUser, refreshUser }}>
       {user ? <Dashboard /> : <Login />}
     </AuthCtx.Provider>
   );
@@ -76,10 +94,11 @@ const styles = {
   },
 };
 
-// inject keyframes
 const sheet = document.createElement('style');
-sheet.textContent = `@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
-@keyframes glow { 0%,100%{ box-shadow: 0 0 10px #7c3aed44; } 50%{ box-shadow: 0 0 24px #7c3aed99; } }`;
+sheet.textContent = `
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
+  @keyframes glow { 0%,100%{ box-shadow: 0 0 10px #7c3aed44; } 50%{ box-shadow: 0 0 24px #7c3aed99; } }
+`;
 document.head.appendChild(sheet);
