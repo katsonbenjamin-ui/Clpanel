@@ -4,7 +4,7 @@ const { query } = require('../db');
 
 const router = express.Router();
 
-// POST /api/session/attach — attach a session ID to the user's account
+// POST /api/session/attach — attach session ID; status → validating
 router.post('/attach', authenticate, async (req, res) => {
   const { sessionId } = req.body || {};
 
@@ -12,15 +12,14 @@ router.post('/attach', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
-  // Basic format validation: BOTIFY-X=<hex>-<hex>
   const SESSION_RE = /^BOTIFY-X=[0-9a-f]{20}-[0-9a-f]{16}$/i;
   if (!SESSION_RE.test(sessionId.trim())) {
-    return res.status(400).json({ error: 'Invalid session ID format' });
+    return res.status(400).json({ error: 'Invalid session ID format. Expected: BOTIFY-X=...' });
   }
 
   try {
     await query(
-      'UPDATE users SET session_id = $1, updated_at = NOW() WHERE id = $2',
+      `UPDATE panel_users SET session_id = $1, runtime_status = 'validating', updated_at = NOW() WHERE id = $2`,
       [sessionId.trim(), req.user.id]
     );
 
@@ -36,11 +35,11 @@ router.post('/attach', authenticate, async (req, res) => {
   }
 });
 
-// DELETE /api/session/detach
+// DELETE /api/session/detach — removes session; status → created
 router.delete('/detach', authenticate, async (req, res) => {
   try {
     await query(
-      'UPDATE users SET session_id = NULL, updated_at = NOW() WHERE id = $1',
+      `UPDATE panel_users SET session_id = NULL, runtime_status = 'created', updated_at = NOW() WHERE id = $1`,
       [req.user.id]
     );
     await query(

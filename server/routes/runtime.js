@@ -6,8 +6,9 @@ const { query }        = require('../db');
 const router = express.Router();
 
 function requireSession(req, res, next) {
-  if (!req.user.session_id)
-    return res.status(400).json({ error: 'No session ID attached. Paste your BOTIFY-X session ID first.' });
+  if (!req.user.session_id) {
+    return res.status(400).json({ error: 'No session ID attached. Paste your BOTIFY-X= session ID first.' });
+  }
   next();
 }
 
@@ -15,33 +16,64 @@ async function logEvent(userId, event, message) {
   try { await query('INSERT INTO runtime_events (user_id, event, message) VALUES ($1,$2,$3)', [userId, event, message]); } catch {}
 }
 
+async function setStatus(userId, status) {
+  try { await query('UPDATE panel_users SET runtime_status = $1, updated_at = NOW() WHERE id = $2', [status, userId]); } catch {}
+}
+
 function expiresAt(user) { return user.expiry_date ? new Date(user.expiry_date).toISOString() : null; }
 
+// POST /api/runtime/start
 router.post('/start', authenticate, requireSession, async (req, res) => {
   const exp = expiresAt(req.user);
-  if (exp && new Date(exp) < new Date())
+  if (exp && new Date(exp) < new Date()) {
     return res.status(403).json({ error: 'Your account has expired. Contact your admin to renew.' });
+  }
+
+  await setStatus(req.user.id, 'starting');
+
   await callCore('POST', '/runtime/' + req.user.session_id + '/register', { expiresAt: exp });
   const result = await callCore('POST', '/runtime/' + req.user.session_id + '/start', { expiresAt: exp });
-  await logEvent(req.user.id, 'start', result.ok ? 'Bot started' : (result.data?.error || 'Failed'));
+
+  if (!result.ok) {
+    await setStatus(req.user.id, 'stopped');
+  }
+  // On success, Core will callback to admin dashboard when truly connected (runtime_status → 'active')
+
+  await logEvent(req.user.id, 'start', result.ok ? 'Bot start command sent' : (result.data?.error || 'Failed'));
   return res.status(result.status).json(result.data);
 });
 
+// POST /api/runtime/restart
 router.post('/restart', authenticate, requireSession, async (req, res) => {
   const exp = expiresAt(req.user);
-  if (exp && new Date(exp) < new Date())
+  if (exp && new Date(exp) < new Date()) {
     return res.status(403).json({ error: 'Your account has expired. Contact your admin to renew.' });
+  }
+
+  await setStatus(req.user.id, 'starting');
   const result = await callCore('POST', '/runtime/' + req.user.session_id + '/restart', { expiresAt: exp });
-  await logEvent(req.user.id, 'restart', result.ok ? 'Bot restarted' : (result.data?.error || 'Failed'));
+
+  if (!result.ok) {
+    await setStatus(req.user.id, 'stopped');
+  }
+
+  await logEvent(req.user.id, 'restart', result.ok ? 'Bot restart command sent' : (result.data?.error || 'Failed'));
   return res.status(result.status).json(result.data);
 });
 
+// POST /api/runtime/stop
 router.post('/stop', authenticate, requireSession, async (req, res) => {
   const result = await callCore('POST', '/runtime/' + req.user.session_id + '/stop', {});
+
+  if (result.ok) {
+    await setStatus(req.user.id, 'stopped');
+  }
+
   await logEvent(req.user.id, 'stop', result.ok ? 'Bot stopped' : (result.data?.error || 'Failed'));
   return res.status(result.status).json(result.data);
 });
 
+// GET /api/runtime/status
 router.get('/status', authenticate, requireSession, async (req, res) => {
   const exp = expiresAt(req.user);
   if (exp && new Date(exp) < new Date()) return res.json({ status: 'expired', connected: false });
@@ -49,16 +81,19 @@ router.get('/status', authenticate, requireSession, async (req, res) => {
   return res.status(result.status).json(result.data);
 });
 
+// GET /api/runtime/validate
 router.get('/validate', authenticate, requireSession, async (req, res) => {
   const result = await callCore('GET', '/runtime/' + req.user.session_id + '/validate');
   return res.status(result.status).json(result.data);
 });
 
+// GET /api/runtime/logs
 router.get('/logs', authenticate, requireSession, async (req, res) => {
   const result = await callCore('GET', '/runtime/' + req.user.session_id + '/logs');
   return res.status(result.status).json(result.data);
 });
 
+// GET /api/runtime/events
 router.get('/events', authenticate, async (req, res) => {
   try {
     const { rows } = await query(
