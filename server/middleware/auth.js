@@ -1,9 +1,9 @@
-const jwt = require('jsonwebtoken');
+const jwt   = require('jsonwebtoken');
 const { query } = require('../db');
 
 async function authenticate(req, res, next) {
   const header = req.headers['authorization'] || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
 
   if (!token) {
     return res.status(401).json({ error: 'Missing auth token' });
@@ -18,21 +18,26 @@ async function authenticate(req, res, next) {
 
   try {
     const { rows } = await query(
-      'SELECT id, username, session_id, expiry_date, is_active, plan FROM users WHERE id = $1',
+      `SELECT id, username, session_id, expiry_date, is_active, plan, runtime_status
+       FROM panel_users WHERE id = $1`,
       [payload.userId]
     );
+
     if (!rows.length || !rows[0].is_active) {
       return res.status(403).json({ error: 'Account inactive or not found' });
     }
 
     const user = rows[0];
-    if (new Date(user.expiry_date) < new Date()) {
+
+    // Only block on expiry if expiry_date is actually set (NULL = no expiry)
+    if (user.expiry_date && new Date(user.expiry_date) < new Date()) {
       return res.status(403).json({ error: 'Account expired' });
     }
 
     req.user = user;
     next();
-  } catch {
+  } catch (err) {
+    console.error('[auth/middleware]', err.message);
     return res.status(500).json({ error: 'Auth verification failed' });
   }
 }

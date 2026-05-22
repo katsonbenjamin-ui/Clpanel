@@ -1,27 +1,29 @@
 const https = require('https');
-const http = require('http');
+const http  = require('http');
 const { URL } = require('url');
 
-const CORE_API_URL = process.env.CORE_API_URL || '';
-const CORE_API_SECRET = process.env.CORE_API_SECRET || '';
+// Env vars aligned with Admin Dashboard naming convention
+const CORE_API_URL = process.env.CORE_URL || '';
+const CORE_API_KEY = process.env.CORE_API_KEY || '';
 
 /**
  * Calls BOTIFY X CORE runtime API.
- * CORE must expose:
- *   POST   /runtime/:sessionId/start
- *   POST   /runtime/:sessionId/restart
- *   POST   /runtime/:sessionId/stop
- *   GET    /runtime/:sessionId/status
- *   GET    /runtime/:sessionId/logs
- *
  * Returns { ok: boolean, data: any, status: number }
  */
 async function callCore(method, path, body = null) {
   if (!CORE_API_URL) {
-    return { ok: false, status: 503, data: { error: 'CORE_API_URL not configured' } };
+    return { ok: false, status: 503, data: { error: 'CORE_URL not configured' } };
   }
 
-  const url = new URL(path, CORE_API_URL);
+  let url;
+  try {
+    url = new URL(path, CORE_API_URL.replace(/\/$/, '') + '/');
+    // Ensure path doesn't get doubled
+    url = new URL(CORE_API_URL.replace(/\/$/, '') + path);
+  } catch (e) {
+    return { ok: false, status: 500, data: { error: 'Invalid CORE_URL: ' + e.message } };
+  }
+
   const isHttps = url.protocol === 'https:';
   const lib = isHttps ? https : http;
 
@@ -32,9 +34,9 @@ async function callCore(method, path, body = null) {
     method: method.toUpperCase(),
     headers: {
       'Content-Type': 'application/json',
-      'X-Botify-Secret': CORE_API_SECRET,
+      'x-api-key': CORE_API_KEY,      // matches Core's requireApiKey check
     },
-    timeout: 10000,
+    timeout: 12000,
   };
 
   return new Promise((resolve) => {
