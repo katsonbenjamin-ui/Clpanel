@@ -8,9 +8,12 @@ const rateLimit = require('express-rate-limit');
 const { Server: SocketServer } = require('socket.io');
 const jwt       = require('jsonwebtoken');
 
-const REQUIRED = ['DATABASE_URL', 'JWT_SECRET', 'CORE_URL'];
+const REQUIRED = ['DATABASE_URL', 'JWT_SECRET', 'CORE_URL', 'CORE_API_KEY'];
 const missing  = REQUIRED.filter(k => !process.env[k]);
-if (missing.length) { console.error('[FATAL] Missing env vars:', missing.join(', ')); process.exit(1); }
+if (missing.length) {
+  console.error('[FATAL] Missing required env vars:', missing.join(', '));
+  process.exit(1);
+}
 
 const { query }     = require('./db');
 const authRoutes    = require('./routes/auth');
@@ -22,8 +25,11 @@ const httpServer = http.createServer(app);
 
 const io = new SocketServer(httpServer, { cors: { origin: '*' }, path: '/socket.io' });
 io.use((socket, next) => {
-  try { const p = jwt.verify(socket.handshake.auth?.token, process.env.JWT_SECRET); socket.userId = p.userId; next(); }
-  catch { next(new Error('Invalid token')); }
+  try {
+    const p = jwt.verify(socket.handshake.auth?.token, process.env.JWT_SECRET);
+    socket.userId = p.userId;
+    next();
+  } catch { next(new Error('Invalid token')); }
 });
 io.on('connection', (socket) => { socket.join('user:' + socket.userId); });
 app.set('io', io);
